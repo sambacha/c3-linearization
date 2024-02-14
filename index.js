@@ -2,57 +2,65 @@
 
 const defaultOptions = {
   reverse: false,
-  python: false
-}
+  python: false  
+};
 
-function merge(sequences) {
-  let result = [];
-  sequences = sequences.map(s => s.slice());
-
-  while (sequences.length > 0) {
+function mergeSequences(inputSequences) {
+  const result = [];
+  const sequencesCopy = inputSequences.map(seq => seq.slice());
+  
+  while (sequencesCopy.length > 0) {
     let found = false;
-    let head;
-
-    for (let seq of sequences) {
-      head = seq[0];
-
-      function isBadHead(s) {
-        return s !== seq && s.slice(1).includes(head);
-      }
-
-      if (!sequences.find(isBadHead)) {
+    let currentHead;
+  
+    for (let seq of sequencesCopy) {
+      currentHead = seq[0];
+    
+      if (!seqContainsHead(seq, currentHead)) {
         found = true;
-        result.push(head);
-
-        for (let seq of sequences) {
-          const index = seq.indexOf(head);
-          if (index > -1) {
-            seq.splice(index, 1);
-          }
-        }
-
+        result.push(currentHead);
+      
+        removeHeadFromSequences(sequencesCopy, currentHead);
         break;
       }
     }
-
-    sequences = sequences.filter(s => s.length > 0);
-
+  
+    sequencesCopy = filterRemainingSequences(sequencesCopy);
+  
     if (!found) {
-      throw new Error("cannot find C3-linearization for input");
+      throw new Error("Cannot find C3 linearization for input");
     }
   }
 
   return result;
 }
 
-function _linearize(graph, head, results, visiting, options) {
+function seqContainsHead(seq, head) {
+  return seq !== head && seq.slice(1).includes(head);
+}
+
+function removeHeadFromSequences(sequences, head) {
+  for (let seq of sequences) {
+    const index = seq.indexOf(head);
+    if (index > -1) {
+      seq.splice(index, 1);
+    }
+  }
+}
+
+function filterRemainingSequences(sequences) {
+  return sequences.filter(seq => seq.length > 0);
+}
+
+function topologicalSort(graph, head, results, visiting, options) {
   if (results.hasOwnProperty(head)) {
     return results[head];
   }
 
   if (visiting.has(head)) {
-    throw new Error('circular dependency found');
+    throw new Error("Circular dependency found");
   }
+
   visiting.add(head);
 
   let parents = graph[head];
@@ -67,13 +75,13 @@ function _linearize(graph, head, results, visiting, options) {
     parents = parents.slice().reverse();
   }
 
-  let sequences = parents.map(x => _linearize(graph, x, results, visiting, options));
+  const parentSequences = mapParentSequences(graph, parents, visiting, options);
 
   if (options.python === true) {
-    sequences = sequences.concat([parents]);
+    parentSequences.push(parents);
   }
 
-  const res = [head].concat(merge(sequences));
+  const res = [head].concat(mergeSequences(parentSequences));
   results[head] = res;
 
   visiting.delete(head);
@@ -81,15 +89,21 @@ function _linearize(graph, head, results, visiting, options) {
   return res;
 }
 
+function mapParentSequences(graph, parents, visiting, options) {
+  return parents.map(parent => {
+    return topologicalSort(graph, parent, {}, visiting, options); 
+  });
+}
+
 function linearize(graph, options) {
-  options = Object.assign({}, defaultOptions, options)
+  options = Object.assign({}, defaultOptions, options);
 
   const results = {};
   const visiting = new Set();
   const heads = Object.keys(graph);
 
   for (let head of heads) {
-    _linearize(graph, head, results, visiting, options);
+    topologicalSort(graph, head, results, visiting, options);
   }
 
   return results;
